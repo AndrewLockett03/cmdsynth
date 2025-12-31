@@ -4,42 +4,9 @@
 
 #define DR_WAV_IMPLEMENTATION
 #include "dr_wav.h"
+#include "LowPassFilter.h"
 #include <iostream>
 #include <cmath>
-
-
-class LowPassFilter {
-public:
-    LowPassFilter(float cutoff_freq, float sample_rate)
-            : z1(0.0), z2(0.0) { // Initialize memory
-        set_coefficients(cutoff_freq, sample_rate);
-    }
-
-    void set_coefficients(float cutoff_freq, float sample_rate) {
-        // Use a standard Q value for Butterworth (approx 0.707)
-        float Q = 0.707;
-        float K = std::tan(M_PI * cutoff_freq / sample_rate);
-        float norm = 1.0 / (1.0 + K / Q + K * K);
-
-        a0 = K * K * norm;
-        a1 = 2 * a0;
-        a2 = a0;
-        b1 = 2 * (K * K - 1) * norm;
-        b2 = (1 - K / Q + K * K) * norm;
-    }
-
-    float update(float input) {
-        // Biquad filter difference equation (Direct Form II transposed)
-        float output = input * a0 + z1;
-        z1 = input * a1 + z2 - b1 * output;
-        z2 = input * a2 - b2 * output;
-        return output;
-    }
-
-private:
-    float a0, a1, a2, b1, b2; // Coefficients
-    float z1, z2;             // Filter memory (state variables)
-};
 
 
 int main(int argc, char** argv) {
@@ -154,7 +121,7 @@ int main(int argc, char** argv) {
     format.container = drwav_container_riff;
     format.format = DR_WAVE_FORMAT_PCM;
     format.channels = 1;
-    format.sampleRate = 44100;
+    format.sampleRate = sampleRate;
     format.bitsPerSample = 16;
     drwav_init_file_write(&wav, "data/recording.wav", &format, NULL);
 

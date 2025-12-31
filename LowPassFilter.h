@@ -9,7 +9,7 @@
 
 class LowPassFilter {
 public:
-    LowPassFilter(float cutoff_freq, float sample_rate)
+    LowPassFilter(float cutoff_freq = 20000, float sample_rate = 44100)
             : z1(0.0), z2(0.0) { // Initialize memory
         set_coefficients(cutoff_freq, sample_rate);
     }

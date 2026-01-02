@@ -13,19 +13,21 @@ CmdSynth::CmdSynth(float sr, float cf, int wt)
           sampleRate(sr),
           cutoff(cf),
           waveType(wt),
+          sample(0),
+          angle(0.0f),
           lpf(cf, sr)
 {}
 
 
-float CmdSynth::decode_frequency(char* frequencyStr) {
+float CmdSynth::decode_frequency(std::string frequencyStr) {
     int offset = 0;
     // Decode note name
     switch(frequencyStr[0]) {
         case 'A':
-            offset = 0;
+            offset = 12;
             break;
         case 'B':
-            offset = 2;
+            offset =14;
             break;
         case 'C':
             offset = 3;
@@ -64,42 +66,54 @@ float CmdSynth::decode_frequency(char* frequencyStr) {
 }
 
 
-drwav_int16* CmdSynth::generate_note(char* frequencyStr, float duration) {
+drwav_int16* CmdSynth::generate_note(std::string frequencyStr, float duration) {
     float frequency = decode_frequency(frequencyStr);
     int totalSamples = sampleRate * duration;
     float* buffer = new float[totalSamples];
-
-    double theta = 2 * M_PI * frequency / sampleRate;
-    std::cout << "Theta: " << theta << "\n";
+    double theta;
     float temp = 0;
 
     std::cout << "Generating " << waveType << " wave at " << frequency << " Hz for " << duration << " seconds.\n";
     switch(waveType) {
         case 1:
             std::cout << "Waveform: Sine Wave\n";
+            theta = 2 * M_PI * frequency / sampleRate;
+            sample = static_cast<int>(angle / theta) - 1; // Continue from last angle
             for (int i = 0; i < totalSamples; ++i) {
-                buffer[i] = sin(static_cast<double>(i) * theta); // Default to sine wave
+                angle = static_cast<float>(sample) * theta;
+                buffer[i] = sin(angle); // Default to sine wave
+                ++sample;
             }
             break;
         case 2:
             std::cout << "Waveform: Square Wave\n";
+            theta = 2 * M_PI * frequency / sampleRate;
+            sample = static_cast<int>(angle / theta) - 1; // Continue from last angle
             for (int i = 0; i < totalSamples; ++i) {
-                buffer[i] = (sin(i * theta) > 0) ? 1.0f : -1.0f; // Square wave
+                angle = static_cast<float>(sample) * theta;
+                buffer[i] = (sin(angle) > 0) ? 1.0f : -1.0f; // Square wave
+                ++sample;
             }
             break;
         case 3:
             std::cout << "Waveform: Sawtooth Wave\n";
+            sample = static_cast<int>(angle / frequency * sampleRate) - 1; // Continue from last angle
             for (int i = 0; i < totalSamples; ++i) {
-                double d_i = static_cast<double>(i);
-                buffer[i] = 2.0 * (d_i * frequency / sampleRate - floor(d_i * frequency / sampleRate)) - 1.0; // Sawtooth wave
+                float spl_i = static_cast<float>(sample);
+                angle = spl_i * frequency / sampleRate;
+                buffer[i] = 2.0 * (angle - floor(angle)) - 1.0; // Sawtooth wave
+                ++sample;
             }
             break;
         case 4:
             std::cout << "Waveform: Triangle Wave\n";
+            sample = static_cast<int>(angle / frequency * sampleRate) - 1; // Continue from last angle
             for (int i = 0; i < totalSamples; ++i) {
-                double d_i = static_cast<double>(i);
-                temp = 2.0 * (d_i * frequency / sampleRate - floor(d_i * frequency / sampleRate)) - 1.0; // Sawtooth wave
+                float d_i = static_cast<float>(sample);
+                angle = d_i * frequency / sampleRate;
+                temp = 2.0 * (angle - floor(angle)) - 1.0; // Sawtooth wave
                 buffer[i] = 2.0 * fabs(temp) - 1.0; // Convert to Triangle wave
+                ++sample;
             }
             break;
         default:

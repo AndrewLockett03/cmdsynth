@@ -8,15 +8,17 @@ class CmdSynth {
 public:
     CmdSynth(float sampleRate, float cutoff, int waveType);
 
-    drwav_int16* generate_note(char* frequencyStr, float duration);
+    drwav_int16* generate_note(std::string frequencyStr, float duration);
 
 private:
     float GAIN;
     float sampleRate;
     float cutoff;
     int waveType;
+    int sample;
+    float angle;
     LowPassFilter lpf;
 
-    float decode_frequency(char* frequencyStr);
+    float decode_frequency(std::string frequencyStr);
 };
 

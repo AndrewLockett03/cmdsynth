@@ -48,7 +48,7 @@ float CmdSynth::decode_frequency(std::string frequencyStr) {
             return 0.0f;
         default:
             std::cerr << "Invalid note name. Use A-G.\n";
-            return 0.0f;
+            return -1.0f;
     }
 
     // Check for accidental
@@ -75,7 +75,9 @@ drwav_int16* CmdSynth::generate_note(std::string frequencyStr, float duration) {
     double theta;
     float temp = 0;
 
-    if (frequency == 0.0f) {
+    if (frequency == 0.0f) {    // Generate Silence
+        prevSilence = true;
+        apply_fade_in_out(buffer, prevSamples, 0.1f, 1); // Apply fade-out
         std::cout << "Generating silence for " << duration << " seconds.\n";
         for (int i = 0; i < totalSamples; ++i) {
             buffer[i] = 0.0f;
@@ -130,14 +132,35 @@ drwav_int16* CmdSynth::generate_note(std::string frequencyStr, float duration) {
                 waveType = 1;
                 break;
         }
+        if (prevSilence) {
+            apply_fade_in_out(buffer, totalSamples, 0.1f, 0); // Apply fade-in
+            prevSilence = false;
+        }
     }
+    prevSamples = totalSamples;
 
-    // Perform final DSP and formatting for WAV
     drwav_int16* wav_buffer = new drwav_int16[totalSamples];
     for (int i = 0; i < totalSamples; ++i) {
         buffer[i] = lpf.update(buffer[i]);  // Apply low-pass filter to prevent aliasing
         wav_buffer[i] = static_cast<drwav_int16>(buffer[i] * 32767.0f * GAIN); // Scale to 16-bit PCM & apply gain
     }
     return wav_buffer;
+}
+
+
+void CmdSynth::apply_fade_in_out(float* buffer, int totalSamples, float fadeDuration, int inOutSwitch) {
+    if (fadeDuration <= 0.0f) return; // No fade to apply
+    int fadeSamples = static_cast<int>(fadeDuration * sampleRate);  // Number of samples to fade
+    if (fadeSamples > totalSamples) fadeSamples = totalSamples; // Cap fade samples to total samples
+    if (inOutSwitch == 0) { // Fade-in
+        for (int i = 0; i < fadeSamples && i < totalSamples; ++i) {
+            buffer[i] *= static_cast<float>(i) / fadeSamples;
+        }
+    }
+    else {  // Fade-out
+        for (int i = totalSamples - fadeSamples; i < totalSamples; ++i) {
+            buffer[i] *= static_cast<float>(totalSamples - i) / fadeSamples;
+        }
+    }
 }
 

@@ -16,9 +16,12 @@ private:
     float cutoff;
     int waveType;
     int sample;
+    int prevSamples;
     float angle;
+    bool prevSilence = true;
     LowPassFilter lpf;
 
     float decode_frequency(std::string frequencyStr);
+    void apply_fade_in_out(float* buffer, int totalSamples, float fadeDuration, int inOutSwitch);
 };
 

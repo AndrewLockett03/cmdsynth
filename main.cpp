@@ -41,6 +41,11 @@ int main(int argc, char** argv) {
             wav_vector.insert(wav_vector.end(), wav_data, wav_data + static_cast<size_t>(duration * sampleRate));
             delete[] wav_data; // Clear buffer after every note
         }
+        // Short silence at end
+        wav_data = generator.generate_note("S", 0.1f);
+        wav_vector.insert(wav_vector.end(), wav_data, wav_data + static_cast<size_t>(0.1f * sampleRate));
+        // Close file
+        fin.close();
     }
     else {
         sampleRate = atof(argv[1]); // Sample rate from command line
@@ -52,7 +57,12 @@ int main(int argc, char** argv) {
         CmdSynth generator = CmdSynth(sampleRate, cutoff, waveType);
         drwav_int16 *wav_data = generator.generate_note(frequencyStr, duration);
         wav_vector.insert(wav_vector.end(), wav_data, wav_data + static_cast<size_t>(duration * sampleRate));
+        // Short silence at end
+        wav_data = generator.generate_note("S", 0.1f), wav_vector.end();
+        wav_vector.insert(wav_vector.end(), wav_data, wav_data + static_cast<size_t>(0.1f * sampleRate));
+        delete[] wav_data; // Clear buffer
     }
+
 
     std::cout << "Writing to WAV file...\n";
     drwav wav;

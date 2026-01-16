@@ -15,7 +15,8 @@ CmdSynth::CmdSynth(float sr, float cf, int wt)
           waveType(wt),
           sample(0),
           angle(0.0f),
-          lpf(cf, sr)
+          lpf(cf, sr),
+          prevSamples(0)
 {}
 
 
@@ -52,6 +53,8 @@ float CmdSynth::decode_frequency(std::string frequencyStr) {
     }
 
     // Check for accidental
+    std::cout << frequencyStr[1] << "\n";
+    int octave;
     if (frequencyStr[1] == '#' || frequencyStr[1] == 'b') {
         if (frequencyStr[1] == '#') {
             offset += 1;
@@ -59,29 +62,38 @@ float CmdSynth::decode_frequency(std::string frequencyStr) {
             offset -= 1;
         }
         frequencyStr += 1; // Move past accidental
+        octave = frequencyStr[2] - '0'; // Get octave
+    }
+    else {
+        octave = frequencyStr[1] - '0'; // Get octave
     }
 
-    int octave = atoi(&frequencyStr[1]);
+    std::cout << "octave: " << octave << "\n";
+
     float frequency = 440 * pow(2, (offset + (octave - 5) * 12) / 12.0); // Calculate frequency
     std::cout << "Calculated frequency: " << frequency << " Hz\n";
     return frequency;
 }
 
 
-drwav_int16* CmdSynth::generate_note(std::string frequencyStr, float duration) {
+std::vector<float> CmdSynth::generate_note(std::string frequencyStr, float duration) {
     float frequency = decode_frequency(frequencyStr);
     int totalSamples = sampleRate * duration;
-    float* buffer = new float[totalSamples];
+    std::vector<float> buffer(totalSamples);
     double theta;
     float temp = 0;
 
     if (frequency == 0.0f) {    // Generate Silence
         prevSilence = true;
-        apply_fade_in_out(buffer, prevSamples, 0.1f, 1); // Apply fade-out
+        std::cout << "Previous samples: " << prevSamples << "\n";
+        if (prevSamples > 0) {
+            apply_fade_out(buffer, prevSamples, 1.0f); // Apply fade-out
+        }
         std::cout << "Generating silence for " << duration << " seconds.\n";
         for (int i = 0; i < totalSamples; ++i) {
             buffer[i] = 0.0f;
         }
+        std::cout << "Silence generated.\n";
     }
     else {
         std::cout << "Generating " << waveType << " wave at " << frequency << " Hz for " << duration << " seconds.\n";
@@ -133,34 +145,87 @@ drwav_int16* CmdSynth::generate_note(std::string frequencyStr, float duration) {
                 break;
         }
         if (prevSilence) {
-            apply_fade_in_out(buffer, totalSamples, 0.1f, 0); // Apply fade-in
+            apply_fade_in(buffer, totalSamples, 0.01f); // Apply fade-in
             prevSilence = false;
         }
     }
     prevSamples = totalSamples;
+    return buffer;
+}
 
-    drwav_int16* wav_buffer = new drwav_int16[totalSamples];
+
+void CmdSynth::apply_fade_in(std::vector<float>& buffer, int totalSamples, float fadeDuration) {
+    std::cout << "Applying fade in...\n";
+    if (fadeDuration <= 0.0f || buffer.empty()) return; // No fade to apply
+    int fadeSamples = static_cast<int>(fadeDuration * sampleRate);  // Number of samples to fade
+    if (fadeSamples > totalSamples) fadeSamples = totalSamples; // Cap fade samples to total samples
+    for (int i = 0; i < fadeSamples && i < totalSamples; ++i) {
+        buffer[i] *= static_cast<float>(i) / fadeSamples;
+    }
+}
+
+
+void CmdSynth::apply_fade_out(std::vector<float>& buffer, int totalSamples, float fadeDuration) {
+    std::cout << "Applying fade out...\n";
+    if (fadeDuration <= 0.0f || buffer.empty()) return; // No fade to apply
+    int fadeSamples = static_cast<int>(sampleRate * 0.01f);
+    int start = std::max(0, (int)buffer.size() - fadeSamples);
+    for (int i = start; i < buffer.size(); ++i) {
+        buffer[i] *= float(buffer.size() - 1 - i) / fadeSamples;
+    }
+}
+
+
+std::vector<drwav_int16> CmdSynth::float_to_int16(std::vector<float>& buffer) {
+    int totalSamples = static_cast<int>(buffer.size());
+    std::vector<drwav_int16> wav_buffer;
     for (int i = 0; i < totalSamples; ++i) {
         buffer[i] = lpf.update(buffer[i]);  // Apply low-pass filter to prevent aliasing
-        wav_buffer[i] = static_cast<drwav_int16>(buffer[i] * 32767.0f * GAIN); // Scale to 16-bit PCM & apply gain
+        drwav_int16 temp = static_cast<drwav_int16>(buffer[i] * 32767.0f * GAIN); // Scale to 16-bit PCM & apply gain
+        wav_buffer.push_back(temp);
     }
     return wav_buffer;
 }
 
 
-void CmdSynth::apply_fade_in_out(float* buffer, int totalSamples, float fadeDuration, int inOutSwitch) {
-    if (fadeDuration <= 0.0f) return; // No fade to apply
-    int fadeSamples = static_cast<int>(fadeDuration * sampleRate);  // Number of samples to fade
-    if (fadeSamples > totalSamples) fadeSamples = totalSamples; // Cap fade samples to total samples
-    if (inOutSwitch == 0) { // Fade-in
-        for (int i = 0; i < fadeSamples && i < totalSamples; ++i) {
-            buffer[i] *= static_cast<float>(i) / fadeSamples;
-        }
+std::vector<float> CmdSynth::sequence_notes(std::string filename) {
+    std::ifstream fin;
+    fin.open(filename);
+    if (!fin.is_open()) {
+        std::cerr << "Error opening file: " << filename << "\n";
+        return std::vector<float>();    // Return empty vector on error
     }
-    else {  // Fade-out
-        for (int i = totalSamples - fadeSamples; i < totalSamples; ++i) {
-            buffer[i] *= static_cast<float>(totalSamples - i) / fadeSamples;
+//    fin >> sampleRate >> cutoff >> waveType;
+    std::string frequencyStr;
+    float duration;
+    std::vector<float> wav_vector;
+    std::vector<float> temp_buffer;
+    while (!fin.eof()) {
+        fin >> std::ws >> frequencyStr >> duration;
+        if (frequencyStr == "S" && !wav_vector.empty()) {
+            apply_fade_out(wav_vector, prevSamples, 0.01f); // Apply fade-out before silence
         }
+        temp_buffer = generate_note(frequencyStr, duration);
+        wav_vector.insert(wav_vector.end(), temp_buffer.begin(), temp_buffer.end());
+        temp_buffer.clear(); // Clear buffer after every note
     }
+    // Close file
+    fin.close();
+
+    // Short silence at end
+    temp_buffer = generate_note("S", 0.1f);
+    wav_vector.insert(wav_vector.end(), temp_buffer.begin(), temp_buffer.end());
+    temp_buffer.clear(); // Clear buffer
+
+    return wav_vector;
+}
+
+
+std::vector<float> CmdSynth::generate_single_note(std::string frequencyStr, float duration) {
+    std::vector<float> temp = generate_note(frequencyStr, duration);
+    //Prevent popping with fade in and out
+    apply_fade_in(temp, static_cast<int>(temp.size()), 0.01f); // Apply fade-in
+    apply_fade_out(temp, static_cast<int>(temp.size()), 0.01f); // Apply fade-out
+    return temp;
 }
 

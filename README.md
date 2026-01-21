@@ -29,6 +29,9 @@ This is meant to work on linux and macOS systems with g++
 CmdSynth supports two current modes: single note generation
 and sequencer mode.
 
+It can be used as a command line tool as described below, or can be 
+used as a library and run via a custom script.
+
 **Single Note Generation**
 ------------
 
